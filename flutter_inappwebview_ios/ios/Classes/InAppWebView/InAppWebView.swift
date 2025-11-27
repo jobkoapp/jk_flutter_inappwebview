@@ -94,6 +94,11 @@ public class InAppWebView: WKWebView, UIScrollViewDelegate, WKUIDelegate,
         panGestureRecognizer = UIPanGestureRecognizer()
         panGestureRecognizer.delegate = self
         panGestureRecognizer.addTarget(self, action: #selector(endDraggingDetected))
+
+        // 레지스트리에 등록
+        if let webViewId = id as? AnyHashable {
+            InAppWebViewRegistry.register(id: webViewId, webView: self)
+        }
     }
     
     override public var frame: CGRect {
@@ -3265,6 +3270,11 @@ if(window.\(JAVASCRIPT_BRIDGE_NAME)[\(_callHandlerID)] != null) {
     }
     
     public func dispose() {
+        // 레지스트리에서 제거
+        if let webViewId = id as? AnyHashable {
+            InAppWebViewRegistry.unregister(id: webViewId)
+        }
+
         channelDelegate?.dispose()
         channelDelegate = nil
         runWindowBeforeCreatedCallbacks()
