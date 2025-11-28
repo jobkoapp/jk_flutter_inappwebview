@@ -23,7 +23,7 @@ import AVFoundation
 import SafariServices
 
 public class SwiftFlutterPlugin: NSObject, FlutterPlugin {
-    
+
     var registrar: FlutterPluginRegistrar?
     var platformUtil: PlatformUtil?
     var inAppWebViewManager: InAppWebViewManager?
@@ -35,16 +35,20 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin {
     var chromeSafariBrowserManager: ChromeSafariBrowserManager?
     var webAuthenticationSessionManager: WebAuthenticationSessionManager?
     var printJobManager: PrintJobManager?
-    
+
+    // AdFit MethodChannel
+    private var adfitChannel: FlutterMethodChannel?
+    private static var registeredWebViewIds = Set<AnyHashable>()
+
     var webViewControllers: [String: InAppBrowserWebViewController?] = [:]
     var safariViewControllers: [String: Any?] = [:]
-    
+
     public init(with registrar: FlutterPluginRegistrar) {
         super.init()
-        
+
         self.registrar = registrar
         registrar.register(FlutterWebViewFactory(plugin: self) as FlutterPlatformViewFactory, withId: FlutterWebViewFactory.VIEW_TYPE_ID)
-        
+
         platformUtil = PlatformUtil(plugin: self)
         inAppBrowserManager = InAppBrowserManager(plugin: self)
         headlessInAppWebViewManager = HeadlessInAppWebViewManager(plugin: self)
@@ -59,6 +63,83 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin {
         }
         webAuthenticationSessionManager = WebAuthenticationSessionManager(plugin: self)
         printJobManager = PrintJobManager(plugin: self)
+
+        // AdFit MethodChannel 초기화
+        adfitChannel = FlutterMethodChannel(name: "flutter_inappwebview/adfit", binaryMessenger: registrar.messenger())
+        adfitChannel?.setMethodCallHandler(handleAdfitMethodCall)
+    }
+
+    // MARK: - AdFit MethodChannel Handler
+
+    private func handleAdfitMethodCall(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        switch call.method {
+        case "registerAdFit":
+            if let args = call.arguments as? [String: Any],
+               let webViewId = args["webViewId"] as? AnyHashable {
+                let success = registerAdFitForWebView(webViewId: webViewId)
+                result(success)
+            } else {
+                result(FlutterError(code: "INVALID_ARGUMENT", message: "webViewId is required", details: nil))
+            }
+
+        case "registerAdFitToAllWebViews":
+            let count = registerAdFitToAllWebViews()
+            result(count)
+
+        case "unregisterAdFit":
+            if let args = call.arguments as? [String: Any],
+               let webViewId = args["webViewId"] as? AnyHashable {
+                unregisterAdFitForWebView(webViewId: webViewId)
+                result(true)
+            } else {
+                result(false)
+            }
+
+        case "getRegisteredCount":
+            result(InAppWebViewRegistry.count())
+
+        default:
+            result(FlutterMethodNotImplemented)
+        }
+    }
+
+    private func registerAdFitForWebView(webViewId: AnyHashable) -> Bool {
+        if SwiftFlutterPlugin.registeredWebViewIds.contains(webViewId) {
+            print("[AdFit] WebView already registered: \(webViewId)")
+            return true
+        }
+
+        guard let webView = InAppWebViewRegistry.getNativeWebViewById(webViewId) else {
+            print("[AdFit] ⚠️ WebView not found in registry: \(webViewId)")
+            return false
+        }
+
+        // AdFit iOS SDK 등록
+        // AdFit.register(webView: webView)
+        // TODO: AdFit iOS SDK import 후 활성화
+
+        SwiftFlutterPlugin.registeredWebViewIds.insert(webViewId)
+        print("[AdFit] ✅ Registered WebView: \(webViewId)")
+        return true
+    }
+
+    private func registerAdFitToAllWebViews() -> Int {
+        var count = 0
+        for id in InAppWebViewRegistry.getAllWebViewIds() {
+            if !SwiftFlutterPlugin.registeredWebViewIds.contains(id) {
+                if registerAdFitForWebView(webViewId: id) {
+                    count += 1
+                }
+            }
+        }
+        print("[AdFit] 📊 Registered \(count) new WebViews (total: \(SwiftFlutterPlugin.registeredWebViewIds.count))")
+        return count
+    }
+
+    private func unregisterAdFitForWebView(webViewId: AnyHashable) {
+        if SwiftFlutterPlugin.registeredWebViewIds.remove(webViewId) != nil {
+            print("[AdFit] 🗑️ Unregistered WebView: \(webViewId)")
+        }
     }
     
     public static func register(with registrar: FlutterPluginRegistrar) {
@@ -66,6 +147,10 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin {
     }
     
     public func detachFromEngine(for registrar: FlutterPluginRegistrar) {
+        // AdFit MethodChannel 해제
+        adfitChannel?.setMethodCallHandler(nil)
+        adfitChannel = nil
+
         platformUtil?.dispose()
         platformUtil = nil
         inAppBrowserManager?.dispose()
