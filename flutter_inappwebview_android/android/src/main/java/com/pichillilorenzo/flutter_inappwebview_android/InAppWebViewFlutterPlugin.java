@@ -132,6 +132,12 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
     // AdFit MethodChannel 초기화
     adfitChannel = new MethodChannel(messenger, ADFIT_CHANNEL);
     adfitChannel.setMethodCallHandler(this::handleAdfitMethodCall);
+
+    // WebView 해제 리스너 등록 (한 번만)
+    if (!listenerRegistered) {
+      InAppWebViewRegistry.addUnregisterListener(unregisterListener);
+      listenerRegistered = true;
+    }
   }
 
   /**
@@ -181,6 +187,19 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
 
   // 이미 등록된 WebView ID 추적 (중복 등록 방지)
   private static final java.util.Set<Object> registeredWebViewIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+  // WebView 해제 시 registeredWebViewIds 자동 정리를 위한 리스너
+  private static final InAppWebViewRegistry.UnregisterListener unregisterListener = new InAppWebViewRegistry.UnregisterListener() {
+    @Override
+    public void onWebViewUnregistered(Object id) {
+      if (registeredWebViewIds.remove(id)) {
+        Log.d(LOG_TAG, "[AdFit] 🧹 Auto-cleaned WebView from registeredWebViewIds: " + id);
+      }
+    }
+  };
+
+  // 리스너 등록 여부 추적
+  private static boolean listenerRegistered = false;
 
   // AdFit 리플렉션 캐싱 (성능 최적화)
   private static volatile Class<?> cachedAdfitClass;

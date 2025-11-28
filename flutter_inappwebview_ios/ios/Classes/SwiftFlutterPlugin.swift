@@ -22,7 +22,7 @@ import Foundation
 import AVFoundation
 import SafariServices
 
-public class SwiftFlutterPlugin: NSObject, FlutterPlugin {
+public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUnregisterListener {
 
     var registrar: FlutterPluginRegistrar?
     var platformUtil: PlatformUtil?
@@ -42,6 +42,15 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin {
 
     var webViewControllers: [String: InAppBrowserWebViewController?] = [:]
     var safariViewControllers: [String: Any?] = [:]
+
+    // MARK: - InAppWebViewRegistryUnregisterListener
+
+    /// WebView 해제 시 registeredWebViewIds에서 자동으로 제거
+    public func onWebViewUnregistered(id: AnyHashable) {
+        if SwiftFlutterPlugin.registeredWebViewIds.remove(id) != nil {
+            print("[AdFit] 🧹 Auto-cleaned WebView from registeredWebViewIds: \(id)")
+        }
+    }
 
     public init(with registrar: FlutterPluginRegistrar) {
         super.init()
@@ -67,6 +76,9 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin {
         // AdFit MethodChannel 초기화
         adfitChannel = FlutterMethodChannel(name: "flutter_inappwebview/adfit", binaryMessenger: registrar.messenger())
         adfitChannel?.setMethodCallHandler(handleAdfitMethodCall)
+
+        // WebView 해제 리스너 등록
+        InAppWebViewRegistry.addUnregisterListener(self)
     }
 
     // MARK: - AdFit MethodChannel Handler
@@ -147,6 +159,9 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin {
     }
     
     public func detachFromEngine(for registrar: FlutterPluginRegistrar) {
+        // WebView 해제 리스너 제거
+        InAppWebViewRegistry.removeUnregisterListener(self)
+
         // AdFit MethodChannel 해제
         adfitChannel?.setMethodCallHandler(nil)
         adfitChannel = nil

@@ -39,10 +39,38 @@ import java.util.concurrent.ConcurrentHashMap;
  * </pre>
  */
 public final class InAppWebViewRegistry {
-    private static final String LOG_TAG = "InAppWebViewRegistry";
-
     // Thread-safe한 ConcurrentHashMap + WeakReference 사용 (메모리 누수 방지)
     private static final Map<Object, WeakReference<InAppWebView>> webViewMap = new ConcurrentHashMap<>();
+
+    // WebView 해제 시 알림을 받을 리스너들
+    private static final List<UnregisterListener> unregisterListeners = new ArrayList<>();
+
+    /**
+     * WebView 해제 시 알림을 받기 위한 리스너 인터페이스
+     */
+    public interface UnregisterListener {
+        void onWebViewUnregistered(Object id);
+    }
+
+    /**
+     * 해제 리스너를 등록합니다.
+     */
+    public static void addUnregisterListener(UnregisterListener listener) {
+        synchronized (unregisterListeners) {
+            if (!unregisterListeners.contains(listener)) {
+                unregisterListeners.add(listener);
+            }
+        }
+    }
+
+    /**
+     * 해제 리스너를 제거합니다.
+     */
+    public static void removeUnregisterListener(UnregisterListener listener) {
+        synchronized (unregisterListeners) {
+            unregisterListeners.remove(listener);
+        }
+    }
 
     private InAppWebViewRegistry() {
         // 인스턴스 생성 방지 (유틸리티 클래스)
@@ -62,11 +90,30 @@ public final class InAppWebViewRegistry {
     /**
      * WebView를 레지스트리에서 제거합니다.
      * InAppWebView dispose 시 자동으로 호출됩니다.
+     * 등록된 리스너들에게 알림을 보냅니다.
      *
      * @param id WebView의 고유 ID
      */
     public static void unregister(@NonNull Object id) {
         webViewMap.remove(id);
+        notifyUnregisterListeners(id);
+    }
+
+    /**
+     * 리스너들에게 WebView 해제 알림을 보냅니다.
+     */
+    private static void notifyUnregisterListeners(Object id) {
+        List<UnregisterListener> listenersCopy;
+        synchronized (unregisterListeners) {
+            listenersCopy = new ArrayList<>(unregisterListeners);
+        }
+        for (UnregisterListener listener : listenersCopy) {
+            try {
+                listener.onWebViewUnregistered(id);
+            } catch (Exception ignored) {
+                // 리스너 예외가 다른 리스너에 영향주지 않도록
+            }
+        }
     }
 
     /**
@@ -108,17 +155,22 @@ public final class InAppWebViewRegistry {
     @NonNull
     public static List<InAppWebView> getAllWebViews() {
         List<InAppWebView> result = new ArrayList<>();
-        Iterator<Map.Entry<Object, WeakReference<InAppWebView>>> iterator = webViewMap.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry<Object, WeakReference<InAppWebView>> entry = iterator.next();
+        List<Object> keysToRemove = new ArrayList<>();
+
+        for (Map.Entry<Object, WeakReference<InAppWebView>> entry : webViewMap.entrySet()) {
             InAppWebView webView = entry.getValue().get();
             if (webView != null) {
                 result.add(webView);
             } else {
-                // GC된 항목 제거
-                iterator.remove();
+                keysToRemove.add(entry.getKey());
             }
         }
+
+        // GC된 항목 별도로 제거
+        for (Object key : keysToRemove) {
+            webViewMap.remove(key);
+        }
+
         return result;
     }
 
@@ -131,16 +183,21 @@ public final class InAppWebViewRegistry {
     @NonNull
     public static List<Object> getAllWebViewIds() {
         List<Object> result = new ArrayList<>();
-        Iterator<Map.Entry<Object, WeakReference<InAppWebView>>> iterator = webViewMap.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry<Object, WeakReference<InAppWebView>> entry = iterator.next();
+        List<Object> keysToRemove = new ArrayList<>();
+
+        for (Map.Entry<Object, WeakReference<InAppWebView>> entry : webViewMap.entrySet()) {
             if (entry.getValue().get() != null) {
                 result.add(entry.getKey());
             } else {
-                // GC된 항목 제거
-                iterator.remove();
+                keysToRemove.add(entry.getKey());
             }
         }
+
+        // GC된 항목 별도로 제거
+        for (Object key : keysToRemove) {
+            webViewMap.remove(key);
+        }
+
         return result;
     }
 
@@ -154,17 +211,22 @@ public final class InAppWebViewRegistry {
     @NonNull
     public static List<Map.Entry<Object, WebView>> getAllEntries() {
         List<Map.Entry<Object, WebView>> result = new ArrayList<>();
-        Iterator<Map.Entry<Object, WeakReference<InAppWebView>>> iterator = webViewMap.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry<Object, WeakReference<InAppWebView>> entry = iterator.next();
+        List<Object> keysToRemove = new ArrayList<>();
+
+        for (Map.Entry<Object, WeakReference<InAppWebView>> entry : webViewMap.entrySet()) {
             InAppWebView webView = entry.getValue().get();
             if (webView != null) {
                 result.add(new AbstractMap.SimpleEntry<>(entry.getKey(), webView));
             } else {
-                // GC된 항목 제거
-                iterator.remove();
+                keysToRemove.add(entry.getKey());
             }
         }
+
+        // GC된 항목 별도로 제거
+        for (Object key : keysToRemove) {
+            webViewMap.remove(key);
+        }
+
         return result;
     }
 
@@ -177,7 +239,8 @@ public final class InAppWebViewRegistry {
     public static boolean contains(@NonNull Object id) {
         WeakReference<InAppWebView> ref = webViewMap.get(id);
         if (ref == null) return false;
-        if (ref.get() == null) {
+        InAppWebView webView = ref.get();
+        if (webView == null) {
             webViewMap.remove(id);
             return false;
         }
@@ -192,15 +255,21 @@ public final class InAppWebViewRegistry {
      */
     public static int size() {
         int count = 0;
-        Iterator<Map.Entry<Object, WeakReference<InAppWebView>>> iterator = webViewMap.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry<Object, WeakReference<InAppWebView>> entry = iterator.next();
+        List<Object> keysToRemove = new ArrayList<>();
+
+        for (Map.Entry<Object, WeakReference<InAppWebView>> entry : webViewMap.entrySet()) {
             if (entry.getValue().get() != null) {
                 count++;
             } else {
-                iterator.remove();
+                keysToRemove.add(entry.getKey());
             }
         }
+
+        // GC된 항목 별도로 제거
+        for (Object key : keysToRemove) {
+            webViewMap.remove(key);
+        }
+
         return count;
     }
 

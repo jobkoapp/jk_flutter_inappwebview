@@ -33,6 +33,11 @@ private class WeakWebView {
     }
 }
 
+/// WebView 해제 시 알림을 받기 위한 프로토콜
+@objc public protocol InAppWebViewRegistryUnregisterListener: AnyObject {
+    func onWebViewUnregistered(id: AnyHashable)
+}
+
 @objc public final class InAppWebViewRegistry: NSObject {
 
     // Thread-safe를 위한 concurrent queue와 barrier 사용
@@ -41,9 +46,37 @@ private class WeakWebView {
     // WebView 저장소 (WeakReference 사용)
     private static var webViewMap: [AnyHashable: WeakWebView] = [:]
 
+    // WebView 해제 시 알림을 받을 리스너들 (weak reference로 메모리 누수 방지)
+    private static var unregisterListeners = NSHashTable<AnyObject>.weakObjects()
+
     private override init() {
         super.init()
         // 인스턴스 생성 방지 (유틸리티 클래스)
+    }
+
+    /// 해제 리스너를 등록합니다.
+    @objc public static func addUnregisterListener(_ listener: InAppWebViewRegistryUnregisterListener) {
+        queue.sync(flags: .barrier) {
+            unregisterListeners.add(listener)
+        }
+    }
+
+    /// 해제 리스너를 제거합니다.
+    @objc public static func removeUnregisterListener(_ listener: InAppWebViewRegistryUnregisterListener) {
+        queue.sync(flags: .barrier) {
+            unregisterListeners.remove(listener)
+        }
+    }
+
+    /// 리스너들에게 WebView 해제 알림을 보냅니다.
+    private static func notifyUnregisterListeners(id: AnyHashable) {
+        var listenersCopy: [InAppWebViewRegistryUnregisterListener] = []
+        queue.sync {
+            listenersCopy = unregisterListeners.allObjects.compactMap { $0 as? InAppWebViewRegistryUnregisterListener }
+        }
+        for listener in listenersCopy {
+            listener.onWebViewUnregistered(id: id)
+        }
     }
 
     /// WebView를 레지스트리에 등록합니다.
@@ -61,12 +94,14 @@ private class WeakWebView {
 
     /// WebView를 레지스트리에서 제거합니다.
     /// InAppWebView dispose 시 자동으로 호출됩니다.
+    /// 등록된 리스너들에게 알림을 보냅니다.
     ///
     /// - Parameter id: WebView의 고유 ID
     @objc public static func unregister(id: AnyHashable) {
         queue.sync(flags: .barrier) {
             webViewMap.removeValue(forKey: id)
         }
+        notifyUnregisterListeners(id: id)
     }
 
     /// ID로 InAppWebView 인스턴스를 조회합니다.
