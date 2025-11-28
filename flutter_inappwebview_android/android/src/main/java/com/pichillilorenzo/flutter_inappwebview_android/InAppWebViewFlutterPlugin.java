@@ -306,6 +306,12 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
 
   @Override
   public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+    // WebView 해제 리스너 제거
+    if (listenerRegistered) {
+      InAppWebViewRegistry.removeUnregisterListener(unregisterListener);
+      listenerRegistered = false;
+    }
+
     // AdFit MethodChannel 해제
     if (adfitChannel != null) {
       adfitChannel.setMethodCallHandler(null);
