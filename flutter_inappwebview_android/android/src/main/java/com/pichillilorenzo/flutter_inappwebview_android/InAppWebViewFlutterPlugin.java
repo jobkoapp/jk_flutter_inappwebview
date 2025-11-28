@@ -24,12 +24,24 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.embedding.engine.plugins.activity.ActivityAware;
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 import io.flutter.plugin.common.BinaryMessenger;
+import io.flutter.plugin.common.MethodCall;
+import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.platform.PlatformViewRegistry;
 import io.flutter.embedding.android.FlutterView;
+
+import com.pichillilorenzo.flutter_inappwebview_android.webview.InAppWebViewRegistry;
+
+import android.util.Log;
+import android.webkit.WebView;
 
 public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
 
   protected static final String LOG_TAG = "InAppWebViewFlutterPL";
+
+  // AdFit MethodChannel
+  private static final String ADFIT_CHANNEL = "flutter_inappwebview/adfit";
+  @Nullable
+  private MethodChannel adfitChannel;
 
   @Nullable
   public PlatformUtil platformUtil;
@@ -116,10 +128,196 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
     }
     tracingControllerManager = new TracingControllerManager(this);
     processGlobalConfigManager = new ProcessGlobalConfigManager(this);
+
+    // AdFit MethodChannel 초기화
+    adfitChannel = new MethodChannel(messenger, ADFIT_CHANNEL);
+    adfitChannel.setMethodCallHandler(this::handleAdfitMethodCall);
+
+    // WebView 해제 리스너 등록 (한 번만)
+    if (!listenerRegistered) {
+      InAppWebViewRegistry.addUnregisterListener(unregisterListener);
+      listenerRegistered = true;
+    }
+  }
+
+  /**
+   * AdFit MethodChannel 핸들러
+   *
+   * app_platform에서 호출:
+   * - registerAdFit(webViewId) → 특정 WebView에 AdFit 등록
+   * - registerAdFitToAllWebViews → 모든 WebView에 AdFit 등록
+   * - unregisterAdFit(webViewId) → 등록 해제
+   */
+  private void handleAdfitMethodCall(MethodCall call, MethodChannel.Result result) {
+    switch (call.method) {
+      case "registerAdFit":
+        Object webViewId = call.argument("webViewId");
+        if (webViewId != null) {
+          boolean success = registerAdFitForWebView(webViewId);
+          result.success(success);
+        } else {
+          result.error("INVALID_ARGUMENT", "webViewId is required", null);
+        }
+        break;
+
+      case "registerAdFitToAllWebViews":
+        int count = registerAdFitToAllWebViews();
+        result.success(count);
+        break;
+
+      case "unregisterAdFit":
+        Object unregisterWebViewId = call.argument("webViewId");
+        if (unregisterWebViewId != null) {
+          unregisterAdFitForWebView(unregisterWebViewId);
+          result.success(true);
+        } else {
+          result.success(false);
+        }
+        break;
+
+      case "getRegisteredCount":
+        result.success(InAppWebViewRegistry.size());
+        break;
+
+      default:
+        result.notImplemented();
+        break;
+    }
+  }
+
+  // 이미 등록된 WebView ID 추적 (중복 등록 방지)
+  private static final java.util.Set<Object> registeredWebViewIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+  // WebView 해제 시 registeredWebViewIds 자동 정리를 위한 리스너
+  private static final InAppWebViewRegistry.UnregisterListener unregisterListener = new InAppWebViewRegistry.UnregisterListener() {
+    @Override
+    public void onWebViewUnregistered(Object id) {
+      if (registeredWebViewIds.remove(id)) {
+        Log.d(LOG_TAG, "[AdFit] 🧹 Auto-cleaned WebView from registeredWebViewIds: " + id);
+      }
+    }
+  };
+
+  // 리스너 등록 여부 추적
+  private static boolean listenerRegistered = false;
+
+  // AdFit 리플렉션 캐싱 (성능 최적화)
+  private static volatile Class<?> cachedAdfitClass;
+  private static volatile java.lang.reflect.Method cachedRegisterMethod;
+  private static volatile boolean adfitInitialized = false;
+  private static volatile boolean adfitAvailable = false;
+
+  /**
+   * AdFit 리플렉션 초기화 (한 번만 실행)
+   */
+  private static synchronized void initAdfitReflection() {
+    if (adfitInitialized) return;
+    adfitInitialized = true;
+    try {
+      cachedAdfitClass = Class.forName("com.kakao.adfit.AdFitSdk");
+      cachedRegisterMethod = cachedAdfitClass.getMethod("register", WebView.class);
+      adfitAvailable = true;
+      Log.d(LOG_TAG, "[AdFit] SDK reflection initialized successfully");
+    } catch (ClassNotFoundException e) {
+      Log.w(LOG_TAG, "[AdFit] AdFitSdk class not found - SDK not integrated");
+      adfitAvailable = false;
+    } catch (NoSuchMethodException e) {
+      Log.e(LOG_TAG, "[AdFit] AdFitSdk.register method not found", e);
+      adfitAvailable = false;
+    }
+  }
+
+  /**
+   * 특정 WebView에 AdFit SDK 등록
+   */
+  private boolean registerAdFitForWebView(Object webViewId) {
+    if (registeredWebViewIds.contains(webViewId)) {
+      Log.d(LOG_TAG, "[AdFit] WebView already registered: " + webViewId);
+      return true;
+    }
+
+    WebView webView = InAppWebViewRegistry.getNativeWebViewById(webViewId);
+    return registerAdFitForWebViewInternal(webViewId, webView);
+  }
+
+  /**
+   * WebView에 AdFit SDK 등록 (내부 메서드 - 캐싱된 리플렉션 사용)
+   */
+  private boolean registerAdFitForWebViewInternal(Object webViewId, WebView webView) {
+    if (webView == null) {
+      Log.w(LOG_TAG, "[AdFit] ⚠️ WebView not found in registry: " + webViewId);
+      return false;
+    }
+
+    // 리플렉션 초기화 (한 번만 실행)
+    initAdfitReflection();
+
+    if (!adfitAvailable) {
+      return false;
+    }
+
+    try {
+      // 캐싱된 리플렉션 사용
+      cachedRegisterMethod.invoke(null, webView);
+      registeredWebViewIds.add(webViewId);
+      Log.d(LOG_TAG, "[AdFit] ✅ Registered WebView: " + webViewId);
+      return true;
+    } catch (Exception e) {
+      Log.e(LOG_TAG, "[AdFit] ❌ Failed to register WebView: " + webViewId, e);
+      return false;
+    }
+  }
+
+  /**
+   * 모든 WebView에 AdFit SDK 등록
+   * 최적화: 스냅샷 생성 및 이중 조회 제거
+   */
+  private int registerAdFitToAllWebViews() {
+    // 리플렉션 초기화 (한 번만 실행)
+    initAdfitReflection();
+    if (!adfitAvailable) {
+      Log.w(LOG_TAG, "[AdFit] SDK not available, skipping registration");
+      return 0;
+    }
+
+    int count = 0;
+    // 스냅샷을 사용하여 순회 중 수정 문제 방지 및 이중 조회 제거
+    for (java.util.Map.Entry<Object, WebView> entry : InAppWebViewRegistry.getAllEntries()) {
+      Object id = entry.getKey();
+      if (!registeredWebViewIds.contains(id)) {
+        // WebView를 직접 사용 (이중 조회 제거)
+        if (registerAdFitForWebViewInternal(id, entry.getValue())) {
+          count++;
+        }
+      }
+    }
+    Log.d(LOG_TAG, "[AdFit] 📊 Registered " + count + " new WebViews (total: " + registeredWebViewIds.size() + ")");
+    return count;
+  }
+
+  /**
+   * WebView 등록 해제
+   */
+  private void unregisterAdFitForWebView(Object webViewId) {
+    if (registeredWebViewIds.remove(webViewId)) {
+      Log.d(LOG_TAG, "[AdFit] 🗑️ Unregistered WebView: " + webViewId);
+    }
   }
 
   @Override
   public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+    // WebView 해제 리스너 제거
+    if (listenerRegistered) {
+      InAppWebViewRegistry.removeUnregisterListener(unregisterListener);
+      listenerRegistered = false;
+    }
+
+    // AdFit MethodChannel 해제
+    if (adfitChannel != null) {
+      adfitChannel.setMethodCallHandler(null);
+      adfitChannel = null;
+    }
+
     if (platformUtil != null) {
       platformUtil.dispose();
       platformUtil = null;

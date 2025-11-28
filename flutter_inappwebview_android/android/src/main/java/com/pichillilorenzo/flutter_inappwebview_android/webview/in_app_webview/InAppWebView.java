@@ -93,6 +93,7 @@ import com.pichillilorenzo.flutter_inappwebview_android.types.UserScript;
 import com.pichillilorenzo.flutter_inappwebview_android.types.WebViewAssetLoaderExt;
 import com.pichillilorenzo.flutter_inappwebview_android.webview.ContextMenuSettings;
 import com.pichillilorenzo.flutter_inappwebview_android.webview.InAppWebViewInterface;
+import com.pichillilorenzo.flutter_inappwebview_android.webview.InAppWebViewRegistry;
 import com.pichillilorenzo.flutter_inappwebview_android.webview.JavaScriptBridgeInterface;
 import com.pichillilorenzo.flutter_inappwebview_android.webview.WebViewChannelDelegate;
 import com.pichillilorenzo.flutter_inappwebview_android.webview.web_message.WebMessageChannel;
@@ -204,6 +205,10 @@ final public class InAppWebView extends InputAwareWebView implements InAppWebVie
     if (plugin != null && plugin.activity != null) {
       plugin.activity.registerForContextMenu(this);
     }
+
+    // 레지스트리에 등록 - 외부 SDK에서 WebView 인스턴스에 접근 가능
+    InAppWebViewRegistry.register(id, this);
+    Log.d(LOG_TAG, "WebView registered to InAppWebViewRegistry with id: " + id);
   }
 
   public WebViewClient createWebViewClient(InAppBrowserDelegate inAppBrowserDelegate) {
@@ -2028,6 +2033,12 @@ final public class InAppWebView extends InputAwareWebView implements InAppWebVie
 
   @Override
   public void dispose() {
+    // 레지스트리에서 제거
+    if (id != null) {
+      InAppWebViewRegistry.unregister(id);
+      Log.d(LOG_TAG, "WebView unregistered from InAppWebViewRegistry with id: " + id);
+    }
+
     if (channelDelegate != null) {
       channelDelegate.dispose();
       channelDelegate = null;
