@@ -180,7 +180,33 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
   }
 
   // 이미 등록된 WebView ID 추적 (중복 등록 방지)
-  private static final java.util.Set<Object> registeredWebViewIds = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+  private static final java.util.Set<Object> registeredWebViewIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+  // AdFit 리플렉션 캐싱 (성능 최적화)
+  private static volatile Class<?> cachedAdfitClass;
+  private static volatile java.lang.reflect.Method cachedRegisterMethod;
+  private static volatile boolean adfitInitialized = false;
+  private static volatile boolean adfitAvailable = false;
+
+  /**
+   * AdFit 리플렉션 초기화 (한 번만 실행)
+   */
+  private static synchronized void initAdfitReflection() {
+    if (adfitInitialized) return;
+    adfitInitialized = true;
+    try {
+      cachedAdfitClass = Class.forName("com.kakao.adfit.AdFitSdk");
+      cachedRegisterMethod = cachedAdfitClass.getMethod("register", WebView.class);
+      adfitAvailable = true;
+      Log.d(LOG_TAG, "[AdFit] SDK reflection initialized successfully");
+    } catch (ClassNotFoundException e) {
+      Log.w(LOG_TAG, "[AdFit] AdFitSdk class not found - SDK not integrated");
+      adfitAvailable = false;
+    } catch (NoSuchMethodException e) {
+      Log.e(LOG_TAG, "[AdFit] AdFitSdk.register method not found", e);
+      adfitAvailable = false;
+    }
+  }
 
   /**
    * 특정 WebView에 AdFit SDK 등록
@@ -192,39 +218,56 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
     }
 
     WebView webView = InAppWebViewRegistry.getNativeWebViewById(webViewId);
-    if (webView != null) {
-      try {
-        // AdFit SDK 등록
-        // 주의: AdFitSdk 클래스는 app_platform에서 제공해야 함
-        // 여기서는 리플렉션을 사용하여 호출
-        Class<?> adfitClass = Class.forName("com.kakao.adfit.AdFitSdk");
-        java.lang.reflect.Method registerMethod = adfitClass.getMethod("register", WebView.class);
-        registerMethod.invoke(null, webView);
+    return registerAdFitForWebViewInternal(webViewId, webView);
+  }
 
-        registeredWebViewIds.add(webViewId);
-        Log.d(LOG_TAG, "[AdFit] ✅ Registered WebView: " + webViewId);
-        return true;
-      } catch (ClassNotFoundException e) {
-        Log.w(LOG_TAG, "[AdFit] AdFitSdk class not found - SDK not integrated");
-        return false;
-      } catch (Exception e) {
-        Log.e(LOG_TAG, "[AdFit] ❌ Failed to register WebView: " + webViewId, e);
-        return false;
-      }
-    } else {
+  /**
+   * WebView에 AdFit SDK 등록 (내부 메서드 - 캐싱된 리플렉션 사용)
+   */
+  private boolean registerAdFitForWebViewInternal(Object webViewId, WebView webView) {
+    if (webView == null) {
       Log.w(LOG_TAG, "[AdFit] ⚠️ WebView not found in registry: " + webViewId);
+      return false;
+    }
+
+    // 리플렉션 초기화 (한 번만 실행)
+    initAdfitReflection();
+
+    if (!adfitAvailable) {
+      return false;
+    }
+
+    try {
+      // 캐싱된 리플렉션 사용
+      cachedRegisterMethod.invoke(null, webView);
+      registeredWebViewIds.add(webViewId);
+      Log.d(LOG_TAG, "[AdFit] ✅ Registered WebView: " + webViewId);
+      return true;
+    } catch (Exception e) {
+      Log.e(LOG_TAG, "[AdFit] ❌ Failed to register WebView: " + webViewId, e);
       return false;
     }
   }
 
   /**
    * 모든 WebView에 AdFit SDK 등록
+   * 최적화: 스냅샷 생성 및 이중 조회 제거
    */
   private int registerAdFitToAllWebViews() {
+    // 리플렉션 초기화 (한 번만 실행)
+    initAdfitReflection();
+    if (!adfitAvailable) {
+      Log.w(LOG_TAG, "[AdFit] SDK not available, skipping registration");
+      return 0;
+    }
+
     int count = 0;
-    for (Object id : InAppWebViewRegistry.getAllWebViewIds()) {
+    // 스냅샷을 사용하여 순회 중 수정 문제 방지 및 이중 조회 제거
+    for (java.util.Map.Entry<Object, WebView> entry : InAppWebViewRegistry.getAllEntries()) {
+      Object id = entry.getKey();
       if (!registeredWebViewIds.contains(id)) {
-        if (registerAdFitForWebView(id)) {
+        // WebView를 직접 사용 (이중 조회 제거)
+        if (registerAdFitForWebViewInternal(id, entry.getValue())) {
           count++;
         }
       }
