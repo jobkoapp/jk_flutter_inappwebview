@@ -85,13 +85,18 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUn
     // MARK: - AdFit MethodChannel Handler
 
     private func handleAdfitMethodCall(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        print("[AdFit] 📥 MethodChannel called: \(call.method), args: \(String(describing: call.arguments))")
+
         switch call.method {
         case "registerAdFit":
             if let args = call.arguments as? [String: Any],
                let webViewId = args["webViewId"] as? AnyHashable {
+                print("[AdFit] registerAdFit called with webViewId: \(webViewId) (type: \(type(of: webViewId)))")
                 let success = registerAdFitForWebView(webViewId: webViewId)
+                print("[AdFit] registerAdFit result: \(success)")
                 result(success)
             } else {
+                print("[AdFit] ❌ registerAdFit failed: invalid arguments - \(String(describing: call.arguments))")
                 result(FlutterError(code: "INVALID_ARGUMENT", message: "webViewId is required", details: nil))
             }
 
@@ -117,6 +122,11 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUn
     }
 
     private func registerAdFitForWebView(webViewId: AnyHashable) -> Bool {
+        print("[AdFit] 🔍 registerAdFitForWebView START - webViewId: \(webViewId)")
+        print("[AdFit] 🔍 Registry count: \(InAppWebViewRegistry.count())")
+        print("[AdFit] 🔍 Registry contains this ID: \(InAppWebViewRegistry.contains(webViewId))")
+        print("[AdFit] 🔍 All registered IDs: \(InAppWebViewRegistry.getAllWebViewIds())")
+
         if SwiftFlutterPlugin.registeredWebViewIds.contains(webViewId) {
             print("[AdFit] WebView already registered: \(webViewId)")
             return true
@@ -127,11 +137,18 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUn
             return false
         }
 
+        print("[AdFit] 🔧 WebView instance found: \(type(of: webView))")
+        print("[AdFit] 🔧 WebView URL: \(webView.url?.absoluteString ?? "nil")")
+        print("[AdFit] 🔧 WebView isLoading: \(webView.isLoading)")
+        print("[AdFit] 🔧 WebView superview: \(webView.superview != nil ? "attached" : "not attached")")
+
         // AdFit iOS SDK 등록 (카카오 하이브리드 광고 지원)
+        print("[AdFit] 🔧 Calling AdFit.register(webView:)...")
         AdFit.register(webView: webView)
 
         SwiftFlutterPlugin.registeredWebViewIds.insert(webViewId)
-        print("[AdFit] ✅ Registered WebView: \(webViewId)")
+        print("[AdFit] ✅ Successfully registered WebView: \(webViewId)")
+        print("[AdFit] ✅ Total registered count: \(SwiftFlutterPlugin.registeredWebViewIds.count)")
         return true
     }
 

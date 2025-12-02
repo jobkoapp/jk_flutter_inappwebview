@@ -149,13 +149,18 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
    * - unregisterAdFit(webViewId) → 등록 해제
    */
   private void handleAdfitMethodCall(MethodCall call, MethodChannel.Result result) {
+    Log.d(LOG_TAG, "[AdFit] 📥 MethodChannel called: " + call.method + ", args: " + call.arguments);
+
     switch (call.method) {
       case "registerAdFit":
         Object webViewId = call.argument("webViewId");
+        Log.d(LOG_TAG, "[AdFit] registerAdFit called with webViewId: " + webViewId + " (type: " + (webViewId != null ? webViewId.getClass().getSimpleName() : "null") + ")");
         if (webViewId != null) {
           boolean success = registerAdFitForWebView(webViewId);
+          Log.d(LOG_TAG, "[AdFit] registerAdFit result: " + success);
           result.success(success);
         } else {
+          Log.e(LOG_TAG, "[AdFit] ❌ registerAdFit failed: webViewId is null");
           result.error("INVALID_ARGUMENT", "webViewId is required", null);
         }
         break;
@@ -231,12 +236,18 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
    * 특정 WebView에 AdFit SDK 등록
    */
   private boolean registerAdFitForWebView(Object webViewId) {
+    Log.d(LOG_TAG, "[AdFit] 🔍 registerAdFitForWebView START - webViewId: " + webViewId);
+    Log.d(LOG_TAG, "[AdFit] 🔍 Registry size: " + InAppWebViewRegistry.size());
+    Log.d(LOG_TAG, "[AdFit] 🔍 Registry contains this ID: " + InAppWebViewRegistry.contains(webViewId));
+    Log.d(LOG_TAG, "[AdFit] 🔍 All registered IDs: " + InAppWebViewRegistry.getAllWebViewIds());
+
     if (registeredWebViewIds.contains(webViewId)) {
       Log.d(LOG_TAG, "[AdFit] WebView already registered: " + webViewId);
       return true;
     }
 
     WebView webView = InAppWebViewRegistry.getNativeWebViewById(webViewId);
+    Log.d(LOG_TAG, "[AdFit] 🔍 WebView lookup result: " + (webView != null ? "FOUND (" + webView.hashCode() + ")" : "NOT FOUND"));
     return registerAdFitForWebViewInternal(webViewId, webView);
   }
 
@@ -244,26 +255,41 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
    * WebView에 AdFit SDK 등록 (내부 메서드 - 캐싱된 리플렉션 사용)
    */
   private boolean registerAdFitForWebViewInternal(Object webViewId, WebView webView) {
+    Log.d(LOG_TAG, "[AdFit] 🔧 registerAdFitForWebViewInternal START - webViewId: " + webViewId);
+
     if (webView == null) {
       Log.w(LOG_TAG, "[AdFit] ⚠️ WebView not found in registry: " + webViewId);
       return false;
     }
 
+    Log.d(LOG_TAG, "[AdFit] 🔧 WebView instance: " + webView.getClass().getName() + "@" + Integer.toHexString(webView.hashCode()));
+    Log.d(LOG_TAG, "[AdFit] 🔧 WebView URL: " + webView.getUrl());
+    Log.d(LOG_TAG, "[AdFit] 🔧 WebView isAttachedToWindow: " + webView.isAttachedToWindow());
+
     // 리플렉션 초기화 (한 번만 실행)
     initAdfitReflection();
+    Log.d(LOG_TAG, "[AdFit] 🔧 AdFit SDK available: " + adfitAvailable);
 
     if (!adfitAvailable) {
+      Log.w(LOG_TAG, "[AdFit] ⚠️ AdFit SDK not available, cannot register");
       return false;
     }
 
     try {
+      Log.d(LOG_TAG, "[AdFit] 🔧 Calling AdFitSdk.register() via reflection...");
       // 캐싱된 리플렉션 사용
       cachedRegisterMethod.invoke(null, webView);
       registeredWebViewIds.add(webViewId);
-      Log.d(LOG_TAG, "[AdFit] ✅ Registered WebView: " + webViewId);
+      Log.d(LOG_TAG, "[AdFit] ✅ Successfully registered WebView: " + webViewId);
+      Log.d(LOG_TAG, "[AdFit] ✅ Total registered count: " + registeredWebViewIds.size());
       return true;
     } catch (Exception e) {
       Log.e(LOG_TAG, "[AdFit] ❌ Failed to register WebView: " + webViewId, e);
+      Log.e(LOG_TAG, "[AdFit] ❌ Exception type: " + e.getClass().getName());
+      Log.e(LOG_TAG, "[AdFit] ❌ Exception message: " + e.getMessage());
+      if (e.getCause() != null) {
+        Log.e(LOG_TAG, "[AdFit] ❌ Cause: " + e.getCause().getMessage());
+      }
       return false;
     }
   }
