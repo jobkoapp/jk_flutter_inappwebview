@@ -562,32 +562,11 @@ final public class InAppWebView extends InputAwareWebView implements InAppWebVie
         return false;
       }
     });
-  }
 
-  // AdFit/GfpSdk 중복 등록 방지 플래그
-  private boolean adSdkRegistered = false;
-
-  /**
-   * WebView가 Window에 attach될 때 호출됨
-   * Native Android JKWebView.init()과 동일한 시점에서 AdFit/GfpSdk 등록
-   *
-   * ⚠️ 중요: prepare()가 아닌 onAttachedToWindow()에서 등록해야 함
-   * - Native JKWebView.init()은 WebView가 View hierarchy에 추가된 후 호출됨
-   * - AdFit JavaScript Interface는 WebView가 Window에 attach된 후에만 정상 동작
-   */
-  @Override
-  protected void onAttachedToWindow() {
-    super.onAttachedToWindow();
-
-    // ⭐ AdFit + GfpSdk 등록 - Native JKWebView.init()과 동일한 타이밍
-    // registerAdFitForWebViewAuto()에서 AdFit과 GfpSdk 모두 등록함
-    if (!adSdkRegistered) {
-      adSdkRegistered = true;
-      Log.d(LOG_TAG, "[AdFit] 🔗 onAttachedToWindow - WebView attached (id: " + id + ", url: " + getUrl() + ")");
-
-      // AdFit + GfpSdk SDK 등록 (InAppWebViewFlutterPlugin에서 둘 다 처리)
-      InAppWebViewFlutterPlugin.registerAdFitForWebViewAuto(id, this);
-    }
+    // ⭐ AdFit + GfpSdk 등록 - prepare() 끝에서 URL 로드 전에 등록
+    // Native JKWebView.init()과 동일한 순서: 설정 → SDK 등록 → URL 로드
+    Log.d(LOG_TAG, "[AdFit] 🔧 prepare() - Registering AdFit/GfpSdk before URL load (id: " + id + ")");
+    InAppWebViewFlutterPlugin.registerAdFitForWebViewAuto(id, this);
   }
 
   public void prepareAndAddUserScripts() {
