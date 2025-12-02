@@ -734,6 +734,12 @@ public class InAppWebViewChromeClient extends WebChromeClient implements PluginR
 
   @Override
   public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+    // ⭐ Native JKWebChromeClient.kt와 동일한 로그 출력
+    // AdFit 광고 관련 JavaScript 콘솔 로그 디버깅용
+    Log.d("WebConsolLog", consoleMessage.message() + "\n" +
+            consoleMessage.messageLevel() + "\n" +
+            consoleMessage.sourceId());
+
     if (inAppWebView != null && inAppWebView.channelDelegate != null) {
       inAppWebView.channelDelegate.onConsoleMessage(
               consoleMessage.message(),
