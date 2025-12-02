@@ -562,10 +562,43 @@ final public class InAppWebView extends InputAwareWebView implements InAppWebVie
         return false;
       }
     });
+  }
 
-    // ⭐ AdFit SDK 자동 등록 - URL 로드 전에 JavaScript Interface 주입
-    // 하이브리드 광고가 동작하려면 URL 로드 전에 AdFit이 등록되어야 함
-    InAppWebViewFlutterPlugin.registerAdFitForWebViewAuto(id, this);
+  // AdFit/GfpSdk 중복 등록 방지 플래그
+  private boolean adSdkRegistered = false;
+
+  /**
+   * WebView가 Window에 attach될 때 호출됨
+   * Native Android JKWebView.init()과 동일한 시점에서 AdFit/GfpSdk 등록
+   *
+   * ⚠️ 중요: prepare()가 아닌 onAttachedToWindow()에서 등록해야 함
+   * - Native JKWebView.init()은 WebView가 View hierarchy에 추가된 후 호출됨
+   * - AdFit JavaScript Interface는 WebView가 Window에 attach된 후에만 정상 동작
+   */
+  @Override
+  protected void onAttachedToWindow() {
+    super.onAttachedToWindow();
+
+    // ⭐ AdFit + GfpSdk 등록 - Native JKWebView.init()과 동일한 타이밍
+    if (!adSdkRegistered) {
+      adSdkRegistered = true;
+      Log.d(LOG_TAG, "[AdFit] 🔗 onAttachedToWindow - WebView attached (id: " + id + ")");
+
+      // AdFit SDK 등록
+      InAppWebViewFlutterPlugin.registerAdFitForWebViewAuto(id, this);
+
+      // GfpSdk (네이버) 등록 - Native와 동일하게 추가
+      try {
+        Class<?> gfpSdkClass = Class.forName("com.naver.gfpsdk.GfpSdk");
+        java.lang.reflect.Method registerMethod = gfpSdkClass.getMethod("registerWebView", android.webkit.WebView.class);
+        registerMethod.invoke(null, this);
+        Log.d(LOG_TAG, "[GfpSdk] ✅ GfpSdk.registerWebView() success");
+      } catch (ClassNotFoundException e) {
+        Log.d(LOG_TAG, "[GfpSdk] GfpSdk class not found - SDK not integrated");
+      } catch (Exception e) {
+        Log.w(LOG_TAG, "[GfpSdk] Failed to register: " + e.getMessage());
+      }
+    }
   }
 
   public void prepareAndAddUserScripts() {
