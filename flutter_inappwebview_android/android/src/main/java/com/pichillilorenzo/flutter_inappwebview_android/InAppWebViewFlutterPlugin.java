@@ -233,51 +233,6 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
   }
 
   /**
-   * WebView에 AdFit SDK 자동 등록 (InAppWebView.prepare()에서 호출)
-   *
-   * 이 메서드는 WebView가 생성되자마자 URL 로드 전에 호출됩니다.
-   * JavaScript Interface가 URL 로드 전에 주입되어야 하이브리드 광고가 동작합니다.
-   *
-   * @param webViewId WebView의 고유 ID
-   * @param webView WebView 인스턴스
-   * @return 성공 여부
-   */
-  public static boolean registerAdFitForWebViewAuto(Object webViewId, WebView webView) {
-    Log.d(LOG_TAG, "[AdFit] 🚀 AUTO-REGISTER called from prepare() - webViewId: " + webViewId);
-
-    if (webView == null) {
-      Log.w(LOG_TAG, "[AdFit] ⚠️ AUTO-REGISTER: WebView is null");
-      return false;
-    }
-
-    // 이미 등록된 경우 스킵
-    if (registeredWebViewIds.contains(webViewId)) {
-      Log.d(LOG_TAG, "[AdFit] AUTO-REGISTER: Already registered, skipping: " + webViewId);
-      return true;
-    }
-
-    // 리플렉션 초기화
-    initAdfitReflection();
-
-    if (!adfitAvailable) {
-      Log.w(LOG_TAG, "[AdFit] AUTO-REGISTER: AdFit SDK not available");
-      return false;
-    }
-
-    try {
-      Log.d(LOG_TAG, "[AdFit] 🚀 AUTO-REGISTER: Calling AdFitSdk.register() BEFORE any URL load...");
-      Log.d(LOG_TAG, "[AdFit] 🚀 AUTO-REGISTER: WebView URL (should be null): " + webView.getUrl());
-      cachedRegisterMethod.invoke(null, webView);
-      registeredWebViewIds.add(webViewId);
-      Log.d(LOG_TAG, "[AdFit] ✅ AUTO-REGISTER SUCCESS: " + webViewId);
-      return true;
-    } catch (Exception e) {
-      Log.e(LOG_TAG, "[AdFit] ❌ AUTO-REGISTER FAILED: " + webViewId, e);
-      return false;
-    }
-  }
-
-  /**
    * 특정 WebView에 AdFit SDK 등록
    */
   private boolean registerAdFitForWebView(Object webViewId) {
