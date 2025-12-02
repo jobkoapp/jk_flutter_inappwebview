@@ -562,6 +562,10 @@ final public class InAppWebView extends InputAwareWebView implements InAppWebVie
         return false;
       }
     });
+
+    // ⭐ AdFit SDK 자동 등록 - URL 로드 전에 JavaScript Interface 주입
+    // 하이브리드 광고가 동작하려면 URL 로드 전에 AdFit이 등록되어야 함
+    InAppWebViewFlutterPlugin.registerAdFitForWebViewAuto(id, this);
   }
 
   public void prepareAndAddUserScripts() {
