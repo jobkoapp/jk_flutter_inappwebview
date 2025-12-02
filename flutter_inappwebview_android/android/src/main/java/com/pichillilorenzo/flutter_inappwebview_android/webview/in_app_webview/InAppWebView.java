@@ -580,24 +580,13 @@ final public class InAppWebView extends InputAwareWebView implements InAppWebVie
     super.onAttachedToWindow();
 
     // ⭐ AdFit + GfpSdk 등록 - Native JKWebView.init()과 동일한 타이밍
+    // registerAdFitForWebViewAuto()에서 AdFit과 GfpSdk 모두 등록함
     if (!adSdkRegistered) {
       adSdkRegistered = true;
-      Log.d(LOG_TAG, "[AdFit] 🔗 onAttachedToWindow - WebView attached (id: " + id + ")");
+      Log.d(LOG_TAG, "[AdFit] 🔗 onAttachedToWindow - WebView attached (id: " + id + ", url: " + getUrl() + ")");
 
-      // AdFit SDK 등록
+      // AdFit + GfpSdk SDK 등록 (InAppWebViewFlutterPlugin에서 둘 다 처리)
       InAppWebViewFlutterPlugin.registerAdFitForWebViewAuto(id, this);
-
-      // GfpSdk (네이버) 등록 - Native와 동일하게 추가
-      try {
-        Class<?> gfpSdkClass = Class.forName("com.naver.gfpsdk.GfpSdk");
-        java.lang.reflect.Method registerMethod = gfpSdkClass.getMethod("registerWebView", android.webkit.WebView.class);
-        registerMethod.invoke(null, this);
-        Log.d(LOG_TAG, "[GfpSdk] ✅ GfpSdk.registerWebView() success");
-      } catch (ClassNotFoundException e) {
-        Log.d(LOG_TAG, "[GfpSdk] GfpSdk class not found - SDK not integrated");
-      } catch (Exception e) {
-        Log.w(LOG_TAG, "[GfpSdk] Failed to register: " + e.getMessage());
-      }
     }
   }
 
