@@ -21,6 +21,7 @@ import WebKit
 import Foundation
 import AVFoundation
 import SafariServices
+import AdFitSDK
 
 public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUnregisterListener {
 
@@ -126,9 +127,8 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUn
             return false
         }
 
-        // AdFit iOS SDK 등록
-        // AdFit.register(webView: webView)
-        // TODO: AdFit iOS SDK import 후 활성화
+        // AdFit iOS SDK 등록 (카카오 하이브리드 광고 지원)
+        AdFit.register(webView: webView)
 
         SwiftFlutterPlugin.registeredWebViewIds.insert(webViewId)
         print("[AdFit] ✅ Registered WebView: \(webViewId)")
