@@ -443,9 +443,17 @@ final public class InAppWebView extends InputAwareWebView implements InAppWebVie
     if (WebViewFeature.isFeatureSupported(WebViewFeature.ENTERPRISE_AUTHENTICATION_APP_LINK_POLICY)) {
       WebSettingsCompat.setEnterpriseAuthenticationAppLinkPolicyEnabled(settings, customSettings.enterpriseAuthenticationAppLinkPolicyEnabled);
     }
-    if (customSettings.requestedWithHeaderOriginAllowList != null &&
-            WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
-      WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, customSettings.requestedWithHeaderOriginAllowList);
+    // X-Requested-With 헤더 설정 (앱 식별용)
+    if (customSettings.requestedWithHeaderOriginAllowList != null) {
+      boolean isSupported = WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST);
+      Log.d(LOG_TAG, "[X-Requested-With] Feature supported: " + isSupported);
+      Log.d(LOG_TAG, "[X-Requested-With] Allow list: " + customSettings.requestedWithHeaderOriginAllowList);
+      if (isSupported) {
+        WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, customSettings.requestedWithHeaderOriginAllowList);
+        Log.d(LOG_TAG, "[X-Requested-With] ✅ Header enabled for origins: " + customSettings.requestedWithHeaderOriginAllowList);
+      } else {
+        Log.w(LOG_TAG, "[X-Requested-With] ⚠️ REQUESTED_WITH_HEADER_ALLOW_LIST feature NOT supported");
+      }
     }
 
     contentBlockerHandler.getRuleList().clear();
