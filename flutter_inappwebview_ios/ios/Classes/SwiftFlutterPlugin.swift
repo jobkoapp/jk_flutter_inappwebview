@@ -124,7 +124,7 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUn
     private func registerAdFitForWebView(webViewId: AnyHashable) -> Bool {
         print("[AdFit] 🔍 registerAdFitForWebView START - webViewId: \(webViewId)")
         print("[AdFit] 🔍 Registry count: \(InAppWebViewRegistry.count())")
-        print("[AdFit] 🔍 Registry contains this ID: \(InAppWebViewRegistry.contains(webViewId))")
+        print("[AdFit] 🔍 Registry contains this ID: \(InAppWebViewRegistry.contains(id: webViewId))")
         print("[AdFit] 🔍 All registered IDs: \(InAppWebViewRegistry.getAllWebViewIds())")
 
         if SwiftFlutterPlugin.registeredWebViewIds.contains(webViewId) {
