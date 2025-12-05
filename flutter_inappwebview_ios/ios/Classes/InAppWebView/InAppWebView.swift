@@ -542,8 +542,13 @@ public class InAppWebView: WKWebView, UIScrollViewDelegate, WKUIDelegate,
                 configuration.preferences.shouldPrintBackgrounds = settings.shouldPrintBackgrounds
             }
         }
+
+        // NOTE: AdFit auto-registration removed (2024-12)
+        // Reason: No server toggle check before registration
+        // Solution: Manual registration via AdFitWebViewService.registerAdFitToAllWebViews() in Flutter
+        // See: BaseWebView.handleWebViewCreated() for toggle check logic
     }
-    
+
     public func prepareAndAddUserScripts() -> Void {
         if windowId != nil {
             // The new created window webview has the same WKWebViewConfiguration variable reference.

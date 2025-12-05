@@ -571,10 +571,10 @@ final public class InAppWebView extends InputAwareWebView implements InAppWebVie
       }
     });
 
-    // ⭐ AdFit + GfpSdk 등록 - prepare() 끝에서 URL 로드 전에 등록
-    // Native JKWebView.init()과 동일한 순서: 설정 → SDK 등록 → URL 로드
-    Log.d(LOG_TAG, "[AdFit] 🔧 prepare() - Registering AdFit/GfpSdk before URL load (id: " + id + ")");
-    InAppWebViewFlutterPlugin.registerAdFitForWebViewAuto(id, this);
+    // NOTE: AdFit auto-registration removed (2024-12)
+    // Reason: No server toggle check before registration
+    // Solution: Manual registration via AdFitWebViewService.registerAdFitToAllWebViews() in Flutter
+    // See: BaseWebView.handleWebViewCreated() for toggle check logic
   }
 
   public void prepareAndAddUserScripts() {

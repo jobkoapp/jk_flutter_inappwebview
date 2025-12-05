@@ -170,7 +170,38 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUn
             print("[AdFit] 🗑️ Unregistered WebView: \(webViewId)")
         }
     }
-    
+
+    // MARK: - AdFit Auto Registration (Called from InAppWebView.prepare())
+
+    /// Called automatically from InAppWebView.prepare() - Same as Android's registerAdFitForWebViewAuto()
+    /// Registers AdFit SDK right after WebView creation, before URL load
+    ///
+    /// - Parameters:
+    ///   - webViewId: Unique ID of the WebView
+    ///   - webView: WKWebView instance
+    /// - Returns: Whether registration was successful
+    @discardableResult
+    public static func registerAdFitForWebViewAuto(webViewId: AnyHashable, webView: WKWebView) -> Bool {
+        print("[AdFit] 🚀 AUTO-REGISTER called from prepare() - webViewId: \(webViewId)")
+
+        if registeredWebViewIds.contains(webViewId) {
+            print("[AdFit] WebView already registered: \(webViewId)")
+            return true
+        }
+
+        print("[AdFit] 🔧 WebView instance: \(type(of: webView))")
+        print("[AdFit] 🔧 WebView URL: \(webView.url?.absoluteString ?? "nil")")
+        print("[AdFit] 🔧 Calling AdFit.register(webView:)...")
+
+        // AdFit iOS SDK 등록 (카카오 하이브리드 광고 지원)
+        AdFit.register(webView: webView)
+
+        registeredWebViewIds.insert(webViewId)
+        print("[AdFit] ✅ Successfully registered WebView: \(webViewId)")
+        print("[AdFit] ✅ Total registered count: \(registeredWebViewIds.count)")
+        return true
+    }
+
     public static func register(with registrar: FlutterPluginRegistrar) {
         let _ = SwiftFlutterPlugin(with: registrar)
     }
