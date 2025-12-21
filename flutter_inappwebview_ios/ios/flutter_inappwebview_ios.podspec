@@ -32,6 +32,7 @@ A new Flutter plugin.
 
   s.platforms = { :ios => '12.0' }
   s.dependency 'OrderedSet', '~>6.0.3'
+  s.dependency 'AdFitSDK'
 
   s.default_subspec = 'Core'
 

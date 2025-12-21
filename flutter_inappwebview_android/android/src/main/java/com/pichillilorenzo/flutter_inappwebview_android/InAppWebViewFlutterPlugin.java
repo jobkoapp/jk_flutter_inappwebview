@@ -156,6 +156,7 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
           boolean success = registerAdFitForWebView(webViewId);
           result.success(success);
         } else {
+          Log.e(LOG_TAG, "[AdFit] ❌ registerAdFit failed: webViewId is null");
           result.error("INVALID_ARGUMENT", "webViewId is required", null);
         }
         break;
@@ -192,9 +193,7 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
   private static final InAppWebViewRegistry.UnregisterListener unregisterListener = new InAppWebViewRegistry.UnregisterListener() {
     @Override
     public void onWebViewUnregistered(Object id) {
-      if (registeredWebViewIds.remove(id)) {
-        Log.d(LOG_TAG, "[AdFit] 🧹 Auto-cleaned WebView from registeredWebViewIds: " + id);
-      }
+      registeredWebViewIds.remove(id);
     }
   };
 
@@ -207,6 +206,12 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
   private static volatile boolean adfitInitialized = false;
   private static volatile boolean adfitAvailable = false;
 
+  // GfpSdk 리플렉션 캐싱 (성능 최적화)
+  private static volatile Class<?> cachedGfpSdkClass;
+  private static volatile java.lang.reflect.Method cachedGfpRegisterMethod;
+  private static volatile boolean gfpInitialized = false;
+  private static volatile boolean gfpAvailable = false;
+
   /**
    * AdFit 리플렉션 초기화 (한 번만 실행)
    */
@@ -217,13 +222,29 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
       cachedAdfitClass = Class.forName("com.kakao.adfit.AdFitSdk");
       cachedRegisterMethod = cachedAdfitClass.getMethod("register", WebView.class);
       adfitAvailable = true;
-      Log.d(LOG_TAG, "[AdFit] SDK reflection initialized successfully");
     } catch (ClassNotFoundException e) {
-      Log.w(LOG_TAG, "[AdFit] AdFitSdk class not found - SDK not integrated");
       adfitAvailable = false;
     } catch (NoSuchMethodException e) {
-      Log.e(LOG_TAG, "[AdFit] AdFitSdk.register method not found", e);
+      Log.e(LOG_TAG, "[AdFit] ❌ AdFitSdk.register method not found", e);
       adfitAvailable = false;
+    }
+  }
+
+  /**
+   * GfpSdk 리플렉션 초기화 (한 번만 실행)
+   */
+  private static synchronized void initGfpSdkReflection() {
+    if (gfpInitialized) return;
+    gfpInitialized = true;
+    try {
+      cachedGfpSdkClass = Class.forName("com.naver.gfpsdk.GfpSdk");
+      cachedGfpRegisterMethod = cachedGfpSdkClass.getMethod("registerWebView", android.webkit.WebView.class);
+      gfpAvailable = true;
+    } catch (ClassNotFoundException e) {
+      gfpAvailable = false;
+    } catch (NoSuchMethodException e) {
+      Log.e(LOG_TAG, "[GfpSdk] ❌ GfpSdk.registerWebView method not found", e);
+      gfpAvailable = false;
     }
   }
 
@@ -232,7 +253,6 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
    */
   private boolean registerAdFitForWebView(Object webViewId) {
     if (registeredWebViewIds.contains(webViewId)) {
-      Log.d(LOG_TAG, "[AdFit] WebView already registered: " + webViewId);
       return true;
     }
 
@@ -257,10 +277,8 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
     }
 
     try {
-      // 캐싱된 리플렉션 사용
       cachedRegisterMethod.invoke(null, webView);
       registeredWebViewIds.add(webViewId);
-      Log.d(LOG_TAG, "[AdFit] ✅ Registered WebView: " + webViewId);
       return true;
     } catch (Exception e) {
       Log.e(LOG_TAG, "[AdFit] ❌ Failed to register WebView: " + webViewId, e);
@@ -276,7 +294,6 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
     // 리플렉션 초기화 (한 번만 실행)
     initAdfitReflection();
     if (!adfitAvailable) {
-      Log.w(LOG_TAG, "[AdFit] SDK not available, skipping registration");
       return 0;
     }
 
@@ -291,7 +308,6 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
         }
       }
     }
-    Log.d(LOG_TAG, "[AdFit] 📊 Registered " + count + " new WebViews (total: " + registeredWebViewIds.size() + ")");
     return count;
   }
 
@@ -299,9 +315,55 @@ public class InAppWebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
    * WebView 등록 해제
    */
   private void unregisterAdFitForWebView(Object webViewId) {
-    if (registeredWebViewIds.remove(webViewId)) {
-      Log.d(LOG_TAG, "[AdFit] 🗑️ Unregistered WebView: " + webViewId);
+    registeredWebViewIds.remove(webViewId);
+  }
+
+  /**
+   * InAppWebView에서 자동 호출용 - onAttachedToWindow에서 사용
+   * WebView가 Window에 attach된 후 AdFit과 GfpSdk를 모두 등록
+   */
+  public static boolean registerAdFitForWebViewAuto(Object webViewId, WebView webView) {
+    if (webView == null) {
+      Log.w(LOG_TAG, "[AdFit] ⚠️ WebView is null");
+      return false;
     }
+
+    if (registeredWebViewIds.contains(webViewId)) {
+      return true;
+    }
+
+    boolean adFitSuccess = false;
+    boolean gfpSuccess = false;
+
+    // AdFit SDK 등록
+    initAdfitReflection();
+    if (adfitAvailable) {
+      try {
+        cachedRegisterMethod.invoke(null, webView);
+        adFitSuccess = true;
+      } catch (Exception e) {
+        Log.e(LOG_TAG, "[AdFit] ❌ AUTO-REGISTER failed: " + e.getMessage());
+      }
+    }
+
+    // GfpSdk (네이버) 등록
+    initGfpSdkReflection();
+    if (gfpAvailable) {
+      try {
+        cachedGfpRegisterMethod.invoke(null, webView);
+        gfpSuccess = true;
+      } catch (Exception e) {
+        Log.e(LOG_TAG, "[GfpSdk] ❌ AUTO-REGISTER failed: " + e.getMessage());
+      }
+    }
+
+    // 적어도 하나의 SDK가 성공하면 등록된 것으로 간주
+    if (adFitSuccess || gfpSuccess) {
+      registeredWebViewIds.add(webViewId);
+      return true;
+    }
+
+    return false;
   }
 
   @Override

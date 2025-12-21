@@ -21,6 +21,7 @@ import WebKit
 import Foundation
 import AVFoundation
 import SafariServices
+import AdFitSDK
 
 public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUnregisterListener {
 
@@ -40,6 +41,12 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUn
     private var adfitChannel: FlutterMethodChannel?
     private static var registeredWebViewIds = Set<AnyHashable>()
 
+    // 서버 토글 값 (Flutter에서 setAdFitConfig로 설정)
+    private static var isAdfitEnabled = false
+
+    /// AdFit 토글 상태 (InAppWebView.didMoveToWindow에서 참조)
+    public static var adfitEnabled: Bool { isAdfitEnabled }
+
     var webViewControllers: [String: InAppBrowserWebViewController?] = [:]
     var safariViewControllers: [String: Any?] = [:]
 
@@ -47,9 +54,7 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUn
 
     /// WebView 해제 시 registeredWebViewIds에서 자동으로 제거
     public func onWebViewUnregistered(id: AnyHashable) {
-        if SwiftFlutterPlugin.registeredWebViewIds.remove(id) != nil {
-            print("[AdFit] 🧹 Auto-cleaned WebView from registeredWebViewIds: \(id)")
-        }
+        SwiftFlutterPlugin.registeredWebViewIds.remove(id)
     }
 
     public init(with registrar: FlutterPluginRegistrar) {
@@ -91,6 +96,7 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUn
                 let success = registerAdFitForWebView(webViewId: webViewId)
                 result(success)
             } else {
+                print("[AdFit] ❌ registerAdFit failed: invalid arguments - \(String(describing: call.arguments))")
                 result(FlutterError(code: "INVALID_ARGUMENT", message: "webViewId is required", details: nil))
             }
 
@@ -110,6 +116,16 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUn
         case "getRegisteredCount":
             result(InAppWebViewRegistry.count())
 
+        case "setAdFitConfig":
+            if let args = call.arguments as? [String: Any],
+               let enabled = args["enabled"] as? Bool {
+                SwiftFlutterPlugin.isAdfitEnabled = enabled
+                result(true)
+            } else {
+                print("[AdFit] ❌ setAdFitConfig failed: invalid arguments")
+                result(false)
+            }
+
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -117,7 +133,6 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUn
 
     private func registerAdFitForWebView(webViewId: AnyHashable) -> Bool {
         if SwiftFlutterPlugin.registeredWebViewIds.contains(webViewId) {
-            print("[AdFit] WebView already registered: \(webViewId)")
             return true
         }
 
@@ -126,12 +141,9 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUn
             return false
         }
 
-        // AdFit iOS SDK 등록
-        // AdFit.register(webView: webView)
-        // TODO: AdFit iOS SDK import 후 활성화
-
+        // AdFit iOS SDK 등록 (카카오 하이브리드 광고 지원)
+        AdFit.register(webView: webView)
         SwiftFlutterPlugin.registeredWebViewIds.insert(webViewId)
-        print("[AdFit] ✅ Registered WebView: \(webViewId)")
         return true
     }
 
@@ -144,16 +156,36 @@ public class SwiftFlutterPlugin: NSObject, FlutterPlugin, InAppWebViewRegistryUn
                 }
             }
         }
-        print("[AdFit] 📊 Registered \(count) new WebViews (total: \(SwiftFlutterPlugin.registeredWebViewIds.count))")
         return count
     }
 
     private func unregisterAdFitForWebView(webViewId: AnyHashable) {
-        if SwiftFlutterPlugin.registeredWebViewIds.remove(webViewId) != nil {
-            print("[AdFit] 🗑️ Unregistered WebView: \(webViewId)")
-        }
+        SwiftFlutterPlugin.registeredWebViewIds.remove(webViewId)
     }
-    
+
+    // MARK: - AdFit Auto Registration (Called from InAppWebView.prepare())
+
+    /// Called automatically from InAppWebView.prepare() - Same as Android's registerAdFitForWebViewAuto()
+    /// Registers AdFit SDK right after WebView creation, before URL load
+    ///
+    /// - Parameters:
+    ///   - webViewId: Unique ID of the WebView
+    ///   - webView: WKWebView instance
+    /// - Returns: Whether registration was successful
+    @discardableResult
+    public static func registerAdFitForWebViewAuto(webViewId: AnyHashable, webView: WKWebView) -> Bool {
+        if registeredWebViewIds.contains(webViewId) {
+            return true
+        }
+
+        // AdFit iOS SDK 등록 (카카오 하이브리드 광고 지원)
+        AdFit.register(webView: webView)
+        AdFit.videoPlayPolicy = .alwaysAutoPlay  // 기존 네이티브와 동일
+
+        registeredWebViewIds.insert(webViewId)
+        return true
+    }
+
     public static func register(with registrar: FlutterPluginRegistrar) {
         let _ = SwiftFlutterPlugin(with: registrar)
     }
