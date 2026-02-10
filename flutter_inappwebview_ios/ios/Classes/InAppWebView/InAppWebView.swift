@@ -126,34 +126,6 @@ public class InAppWebView: WKWebView, UIScrollViewDelegate, WKUIDelegate,
         super.init(coder: aDecoder)!
     }
 
-    // MARK: - AdFit Auto Registration (iOS Timing Fix)
-
-    /// WebView가 window에 attach된 후 AdFit SDK를 자동 등록합니다.
-    /// iOS에서는 WKWebView가 view hierarchy에 완전히 attach된 후에야 AdFit 등록이 정상 동작합니다.
-    /// Android와 달리 iOS는 초기화 타이밍이 늦어서 300ms 딜레이를 추가합니다.
-    public override func didMoveToWindow() {
-        super.didMoveToWindow()
-
-        // window에 attach된 경우에만 등록 (제거 시에는 무시)
-        guard window != nil else { return }
-
-        // 중복 등록 방지 - id가 AnyHashable인 경우만 처리
-        guard let webViewId = id as? AnyHashable else { return }
-
-        // 서버 토글 체크 - Flutter에서 setAdFitConfig로 설정된 값
-        guard SwiftFlutterPlugin.adfitEnabled else {
-            return
-        }
-
-        // 300ms 딜레이 후 AdFit 자동 등록
-        // iOS WKWebView는 view hierarchy attach 후에도 완전한 초기화에 시간이 필요함
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            guard let self = self else { return }
-            guard let webViewId = self.id as? AnyHashable else { return }
-            SwiftFlutterPlugin.registerAdFitForWebViewAuto(webViewId: webViewId, webView: self)
-        }
-    }
-
     public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         return true
     }
